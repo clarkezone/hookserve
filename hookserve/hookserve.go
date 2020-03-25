@@ -1,15 +1,16 @@
 package hookserve
 
 import (
-	"crypto/hmac"
-	"crypto/sha1"
-	"encoding/hex"
+	//"crypto/hmac"
+	//"crypto/sha1"
+	//"encoding/hex"
 	"errors"
-	"github.com/bmatsuo/go-jsontree"
 	"io/ioutil"
 	"net/http"
 	"strconv"
 	"strings"
+
+	"github.com/bmatsuo/go-jsontree"
 )
 
 var ErrInvalidEventFormat = errors.New("Unable to parse event string. Invalid Format.")
@@ -145,12 +146,12 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	eventType := req.Header.Get("X-GitHub-Event")
+	eventType := req.Header.Get("X-GitLab-Event")
 	if eventType == "" {
 		http.Error(w, "400 Bad Request - Missing X-GitHub-Event Header", http.StatusBadRequest)
 		return
 	}
-	if eventType != "push" && eventType != "pull_request" {
+	if eventType != "Push Hook" && eventType != "pull_request" {
 		http.Error(w, "400 Bad Request - Unknown Event Type "+eventType, http.StatusBadRequest)
 		return
 	}
@@ -161,21 +162,32 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
+	// GitHub
 	// If we have a Secret set, we should check the MAC
+	// if s.Secret != "" {
+	// 	sig := req.Header.Get("X-Hub-Signature")
+
+	// 	if sig == "" {
+	// 		http.Error(w, "403 Forbidden - Missing X-Hub-Signature required for HMAC verification", http.StatusForbidden)
+	// 		return
+	// 	}
+
+	// 	mac := hmac.New(sha1.New, []byte(s.Secret))
+	// 	mac.Write(body)
+	// 	expectedMAC := mac.Sum(nil)
+	// 	expectedSig := "sha1=" + hex.EncodeToString(expectedMAC)
+	// 	if !hmac.Equal([]byte(expectedSig), []byte(sig)) {
+	// 		http.Error(w, "403 Forbidden - HMAC verification failed", http.StatusForbidden)
+	// 		return
+	// 	}
+	// }
+
+	//GitLab
 	if s.Secret != "" {
-		sig := req.Header.Get("X-Hub-Signature")
+		token := req.Header.Get("X-Gitlab-Token")
 
-		if sig == "" {
-			http.Error(w, "403 Forbidden - Missing X-Hub-Signature required for HMAC verification", http.StatusForbidden)
-			return
-		}
-
-		mac := hmac.New(sha1.New, []byte(s.Secret))
-		mac.Write(body)
-		expectedMAC := mac.Sum(nil)
-		expectedSig := "sha1=" + hex.EncodeToString(expectedMAC)
-		if !hmac.Equal([]byte(expectedSig), []byte(sig)) {
-			http.Error(w, "403 Forbidden - HMAC verification failed", http.StatusForbidden)
+		if token == "" || token != s.Secret {
+			http.Error(w, "403 Forbidden - Missing invalid GitLab token", http.StatusForbidden)
 			return
 		}
 	}
@@ -190,7 +202,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	// Parse the request and build the Event
 	event := Event{}
 
-	if eventType == "push" {
+	if eventType == "Push Hook" {
 		rawRef, err := request.Get("ref").String()
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -209,16 +221,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		event.Commit, err = request.Get("head_commit").Get("id").String()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		event.Owner, err = request.Get("repository").Get("owner").Get("name").String()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
+		// event.Commit, err = request.Get("head_commit").Get("id").String()
+		// if err != nil {
+		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+		// 	return
+		// }
+		// event.Owner, err = request.Get("repository").Get("owner").Get("name").String()
+		// if err != nil {
+		// 	http.Error(w, err.Error(), http.StatusInternalServerError)
+		// 	return
+		// }
 	} else if eventType == "pull_request" {
 		event.Action, err = request.Get("action").String()
 		if err != nil {
